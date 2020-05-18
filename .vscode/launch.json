@@ -27,6 +27,14 @@
             }
         },
         {
+            "name": "Spider Launch",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/Solution/EveMarket/EveMarketSpider/bin/Debug/netcoreapp3.1/EveMarketSpider.dll",
+            "cwd": "${workspaceFolder}/Solution/EveMarket/EveMarketSpider"
+        },
+        {
             "name": ".NET Core Attach",
             "type": "coreclr",
             "request": "attach",

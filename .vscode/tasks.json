@@ -7,7 +7,7 @@
             "type": "process",
             "args": [
                 "build",
-                "${workspaceFolder}/Solution/EveMarket/EveMarketApi/EveMarketApi.csproj",
+                "${workspaceFolder}/Solution/EveMarket/EveMarket.sln",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary"
             ],
