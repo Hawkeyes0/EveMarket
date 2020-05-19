@@ -8,6 +8,7 @@ using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using EveMarketEntities;
 using EveMarketSpider.Data;
+using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 
 namespace EveMarketSpider
@@ -31,9 +32,71 @@ namespace EveMarketSpider
                 Client.DefaultRequestHeaders.IfNoneMatch.Add(new System.Net.Http.Headers.EntityTagHeaderValue(File.ReadAllText("mg.etag")));
             }
             int[] types = await CatchMarketGroupsAsync();
-            // TODO: catch types
+
+            if (File.Exists("ty.etag"))
+            {
+                Client.DefaultRequestHeaders.IfNoneMatch.Clear();
+                //Client.DefaultRequestHeaders.IfNoneMatch.Add(new System.Net.Http.Headers.EntityTagHeaderValue(File.ReadAllText("ty.etag")));
+            }
+            await CatchTypesAsync(types);
             // TODO: catch regions
             // TODO: catch orders
+        }
+
+        private async Task CatchTypesAsync(int[] types)
+        {
+            try
+            {
+                using (EveContext context = new EveContext())
+                {
+                    if (types.Length == 0)
+                    {
+                        types = context.Types.Select(t => t.TypeId).ToArray();
+                    }
+                    int i = 0;
+                    foreach (int tid in types)
+                    {
+                        string json;
+                        if (tid == types[0])
+                        {
+                            var resp = await Client.GetAsync($"universe/types/{tid}/?datasource=serenity&language=zh");
+                            if (resp.StatusCode == HttpStatusCode.NotModified)
+                            {
+                                Console.WriteLine("No data modified.");
+                                return;
+                            }
+                            await File.WriteAllTextAsync("ty.etag", resp.Headers.ETag.Tag);
+                            json = await resp.Content.ReadAsStringAsync();
+                        }
+                        else
+                        {
+                            json = await Client.GetStringAsync($"universe/types/{tid}/?datasource=serenity&language=zh");
+                        }
+                        EveMarketEntities.Type t = JsonConvert.DeserializeObject<EveMarketEntities.Type>(json);
+
+                        if (context.Types.Any(t => t.TypeId == tid))
+                        {
+                            await context.AddOrUpdateAsync(t);
+                            t.DogmaAttributes?.ForEach(e => { e.TypeId = t.TypeId; context.AddOrUpdateAsync(e).Wait(); });
+                            t.DogmaEffects?.ForEach(e => { e.TypeId = t.TypeId; context.AddOrUpdateAsync(e).Wait(); });
+                        }
+                        else
+                        {
+                            context.Add(t);
+                        }
+
+                        if (++i % 10000 == 0)
+                        {
+                            await context.SaveChangesAsync();
+                        }
+                    }
+                    await context.SaveChangesAsync();
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+            }
         }
 
         private async Task<int[]> CatchMarketGroupsAsync()
@@ -56,16 +119,17 @@ namespace EveMarketSpider
 
                 using (EveContext context = new EveContext())
                 {
+                    int i = 0;
                     foreach (int groupId in groupIds)
                     {
                         json = await Client.GetStringAsync($"markets/groups/{groupId}/?datasource=serenity&language=zh");
                         MarketGroup marketGroup = JsonConvert.DeserializeObject<MarketGroup>(json);
-                        if (context.MarketGroups.Any(g => g.MarketGroupId == groupId))
-                            context.Update(marketGroup);
-                        else
-                            context.Add(marketGroup);
+                        await context.AddOrUpdateAsync(marketGroup);
                         //allMarketGroups[marketGroup.MarketGroupId] = marketGroup;
-                        if (marketGroup.Types != null) types.AddRange(marketGroup.Types);
+                        if (marketGroup.Types != null)
+                            types.AddRange(marketGroup.Types);
+                        if (++i % 10000 == 0)
+                            await context.SaveChangesAsync();
                     }
                     await context.SaveChangesAsync();
                 }
@@ -89,6 +153,7 @@ namespace EveMarketSpider
             {
                 Console.WriteLine(e);
             }
+            Console.WriteLine(JsonConvert.SerializeObject(types));
             return types.ToArray();
         }
     }

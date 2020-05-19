@@ -13,7 +13,7 @@ namespace EveMarketEntities
         [JsonProperty("parent_group_id")]
         public int ParentGroupId { get; set; }
 
-        [JsonProperty("type")]
+        [JsonProperty("types")]
         [NotMapped]
         public int[] Types { get; set; }
 

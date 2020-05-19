@@ -2,14 +2,16 @@
 using EveMarketSpider.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace EveMarketSpider.Migrations
 {
     [DbContext(typeof(EveContext))]
-    partial class EveContextModelSnapshot : ModelSnapshot
+    [Migration("20200519085048_init_type")]
+    partial class init_type
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
