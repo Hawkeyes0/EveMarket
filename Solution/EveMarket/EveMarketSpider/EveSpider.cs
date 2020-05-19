@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using EveMarketEntities;
+using EveMarketSpider.Data;
 using Newtonsoft.Json;
 
 namespace EveMarketSpider
@@ -49,18 +51,25 @@ namespace EveMarketSpider
                 await File.WriteAllTextAsync("mg.etag", resp.Headers.ETag.Tag);
                 Console.WriteLine($"market group ids: {json}");
                 int[] groupIds = JsonConvert.DeserializeObject<int[]>(json);
-                Dictionary<int, MarketGroup> allMarketGroups = new Dictionary<int, MarketGroup>();
+                //Dictionary<int, MarketGroup> allMarketGroups = new Dictionary<int, MarketGroup>();
                 List<MarketGroup> roots = new List<MarketGroup>();
 
-                foreach (int groupId in groupIds)
+                using (EveContext context = new EveContext())
                 {
-                    json = await Client.GetStringAsync($"markets/groups/{groupId}/?datasource=serenity&language=zh");
-                    MarketGroup marketGroup = JsonConvert.DeserializeObject<MarketGroup>(json);
-                    /// TODO: save to db
-                    allMarketGroups[marketGroup.MarketGroupId] = marketGroup;
+                    foreach (int groupId in groupIds)
+                    {
+                        json = await Client.GetStringAsync($"markets/groups/{groupId}/?datasource=serenity&language=zh");
+                        MarketGroup marketGroup = JsonConvert.DeserializeObject<MarketGroup>(json);
+                        if (context.MarketGroups.Any(g => g.MarketGroupId == groupId))
+                            context.Update(marketGroup);
+                        else
+                            context.Add(marketGroup);
+                        //allMarketGroups[marketGroup.MarketGroupId] = marketGroup;
+                        if (marketGroup.Types != null) types.AddRange(marketGroup.Types);
+                    }
+                    await context.SaveChangesAsync();
                 }
-
-                foreach (int groupId in groupIds)
+                /*foreach (int groupId in groupIds)
                 {
                     var marketGroup = allMarketGroups[groupId];
                     types.AddRange(marketGroup.Types);
@@ -74,7 +83,7 @@ namespace EveMarketSpider
                     }
                 }
 
-                Console.WriteLine(JsonConvert.SerializeObject(roots));
+                Console.WriteLine(JsonConvert.SerializeObject(roots));*/
             }
             catch (Exception e)
             {
