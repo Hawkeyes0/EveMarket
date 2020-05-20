@@ -8,8 +8,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EveMarketSpider.Migrations
 {
     [DbContext(typeof(EveContext))]
-    [Migration("20200519085048_init_type")]
-    partial class init_type
+    [Migration("20200520163517_init")]
+    partial class init
     {
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
@@ -30,6 +30,9 @@ namespace EveMarketSpider.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("DisplayName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Etag")
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("HighIsGood")
@@ -56,6 +59,29 @@ namespace EveMarketSpider.Migrations
                     b.HasKey("AttributeId");
 
                     b.ToTable("Attributes");
+                });
+
+            modelBuilder.Entity("EveMarketEntities.Constellation", b =>
+                {
+                    b.Property<int>("ConstellationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Etag")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("RegionId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("ConstellationId");
+
+                    b.ToTable("Constellations");
                 });
 
             modelBuilder.Entity("EveMarketEntities.Effect", b =>
@@ -132,6 +158,9 @@ namespace EveMarketSpider.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Etag")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .HasColumnType("TEXT");
 
@@ -168,6 +197,84 @@ namespace EveMarketSpider.Migrations
                     b.ToTable("Modifiers");
                 });
 
+            modelBuilder.Entity("EveMarketEntities.Region", b =>
+                {
+                    b.Property<int>("RegionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Etag")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("RegionId");
+
+                    b.ToTable("Regions");
+                });
+
+            modelBuilder.Entity("EveMarketEntities.Station", b =>
+                {
+                    b.Property<int>("StationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Etag")
+                        .HasColumnType("TEXT");
+
+                    b.Property<float>("MaxDockableShipVolume")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SystemId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("TypeId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("StationId");
+
+                    b.ToTable("Stations");
+                });
+
+            modelBuilder.Entity("EveMarketEntities.System", b =>
+                {
+                    b.Property<int>("SystemId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ConstellationId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Etag")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SecurityClass")
+                        .HasColumnType("TEXT");
+
+                    b.Property<float>("SecurityStatus")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("SystemId");
+
+                    b.ToTable("Systems");
+                });
+
             modelBuilder.Entity("EveMarketEntities.Type", b =>
                 {
                     b.Property<int>("TypeId")
@@ -178,6 +285,9 @@ namespace EveMarketSpider.Migrations
                         .HasColumnType("REAL");
 
                     b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Etag")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("GraphicId")

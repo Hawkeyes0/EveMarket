@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Threading;
 using System.Threading.Tasks;
 using EveMarketEntities;
 using EveMarketSpider.Data;
@@ -13,84 +14,169 @@ using Newtonsoft.Json;
 
 namespace EveMarketSpider
 {
+    internal delegate Task SeekerAsync(int id);
+
     internal class EveSpider
     {
-        private HttpClient Client { get; }
+        private EveContext db = new EveContext();
+
+        private object dblocker = new object();
+
+        private string Domain { get; }
+
+        private static Semaphore semaphore = new Semaphore(10, 10);
+
+        private static Queue<HttpClient> clients = new Queue<HttpClient>();
+
+        private static Queue<(int id, SeekerAsync seeker)> Queue { get; } = new Queue<(int id, SeekerAsync seeker)>();
+
+        private static object queueLocker = new object();
 
         public EveSpider()
         {
-            string domain = File.ReadAllText("domain.cfg");
-            Client = new HttpClient();
-            Client.BaseAddress = new Uri(domain);
+            Domain = File.ReadAllText("domain.cfg");
         }
 
-        internal async Task CatchDataAsync()
+        internal void CatchData()
         {
-            if (File.Exists("mg.etag"))
-            {
-                Client.DefaultRequestHeaders.IfNoneMatch.Clear();
-                Client.DefaultRequestHeaders.IfNoneMatch.Add(new System.Net.Http.Headers.EntityTagHeaderValue(File.ReadAllText("mg.etag")));
-            }
-            int[] types = await CatchMarketGroupsAsync();
+            Queue.Enqueue((0, CatchMarketGroupsAsync));
+            Queue.Enqueue((0, CatchRegionsAsync));
 
-            if (File.Exists("ty.etag"))
-            {
-                Client.DefaultRequestHeaders.IfNoneMatch.Clear();
-                //Client.DefaultRequestHeaders.IfNoneMatch.Add(new System.Net.Http.Headers.EntityTagHeaderValue(File.ReadAllText("ty.etag")));
-            }
-            await CatchTypesAsync(types);
-            // TODO: catch regions
             // TODO: catch orders
+
+            List<Task> tasks = new List<Task>();
+            while (tasks.Count < 10)
+            {
+                tasks.Add(Task.Run(async () =>
+                {
+                    int fails = 0;
+                    (int id, SeekerAsync seeker) item;
+                    while (fails < 10)
+                    {
+                        try
+                        {
+                            lock (queueLocker) item = Queue.Dequeue();
+                            await item.seeker(item.id);
+                            fails = 0;
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            fails++;
+                            Thread.Sleep(500);
+                        }
+                        catch (Exception e)
+                        {
+                            Console.WriteLine(e);
+                            throw;
+                        }
+                    }
+                }));
+            }
+
+            Task.WaitAll(tasks.ToArray());
         }
 
-        private async Task CatchTypesAsync(int[] types)
+        private async Task CatchRegionsAsync(int _)
+        {
+            int[] regionIds = await GetObjectAsync<int[]>("rg.etag", "universe/regions/?datasource=serenity");
+            if (regionIds == null) return;
+            foreach (int regionId in regionIds)
+            {
+                lock (queueLocker) Queue.Enqueue((regionId, CatchRegionAsync));
+            }
+        }
+
+        private async Task CatchRegionAsync(int id)
+        {
+            Region obj = await GetObjectAsync<Region>($"rg\\{id}.etag", $"universe/regions/{id}/?datasource=serenity&language=zh");
+            if (obj == null) return;
+            lock (dblocker)
+            {
+                db.AddOrUpdateAsync(obj).Wait();
+                db.SaveChanges();
+            }
+            if (obj.Constellations != null && obj.Constellations.Length > 0)
+            {
+                foreach (int constellationId in obj.Constellations)
+                {
+                    lock (queueLocker) Queue.Enqueue((constellationId, CatchConstellationAsync));
+                }
+            }
+        }
+
+        private async Task CatchConstellationAsync(int id)
+        {
+            Constellation obj = await GetObjectAsync<Constellation>($"cl\\{id}.etag", $"universe/constellations/{id}/?datasource=serenity&language=zh");
+            if (obj == null) return;
+            lock (dblocker)
+            {
+                db.AddOrUpdateAsync(obj).Wait();
+                db.SaveChanges();
+            }
+            if (obj.Systems != null && obj.Systems.Length > 0)
+            {
+                foreach (int systemId in obj.Systems)
+                {
+                    lock (queueLocker) Queue.Enqueue((systemId, CatchSystemAsync));
+                }
+            }
+        }
+
+        private async Task CatchSystemAsync(int id)
+        {
+            EveMarketEntities.System obj = await GetObjectAsync<EveMarketEntities.System>($"sy\\{id}.etag", $"universe/systems/{id}/?datasource=serenity&language=zh");
+            if (obj == null) return;
+            lock (dblocker)
+            {
+                db.AddOrUpdateAsync(obj).Wait();
+                db.SaveChanges();
+            }
+            if (obj.Stations != null && obj.Stations.Length > 0)
+            {
+                foreach (int systemId in obj.Stations)
+                {
+                    lock (queueLocker) Queue.Enqueue((systemId, CatchStationAsync));
+                }
+            }
+        }
+
+        private async Task CatchStationAsync(int id)
+        {
+            Station obj = await GetObjectAsync<Station>($"st\\{id}.etag", $"universe/systems/{id}/?datasource=serenity&language=zh");
+            if (obj == null) return;
+            lock (dblocker)
+            {
+                db.AddOrUpdateAsync(obj).Wait();
+                db.SaveChanges();
+            }
+            if (obj.TypeId > 0)
+            {
+                lock (queueLocker) Queue.Enqueue((obj.TypeId, CatchTypeAsync));
+            }
+        }
+
+        private async Task CatchTypeAsync(int id)
+        {
+            EveMarketEntities.Type t = await GetObjectAsync<EveMarketEntities.Type>($"ty\\{id}.etag", $"universe/types/{id}/?datasource=serenity&language=zh");
+            if (t == null) return;
+            lock (dblocker)
+            {
+                db.AddOrUpdateAsync(t).Wait();
+                t.DogmaAttributes?.ForEach(e => { e.TypeId = t.TypeId; db.AddOrUpdateAsync(e).Wait(); });
+                t.DogmaEffects?.ForEach(e => { e.TypeId = t.TypeId; db.AddOrUpdateAsync(e).Wait(); });
+                db.SaveChanges();
+            }
+        }
+
+        private async Task CatchMarketGroupsAsync(int _)
         {
             try
             {
-                using (EveContext context = new EveContext())
+                int[] groupIds = await GetObjectAsync<int[]>("mg.etag", "markets/groups/?datasource=serenity&language=zh");
+                if (groupIds == null) return;
+                foreach (int groupId in groupIds)
                 {
-                    if (types.Length == 0)
-                    {
-                        types = context.Types.Select(t => t.TypeId).ToArray();
-                    }
-                    int i = 0;
-                    foreach (int tid in types)
-                    {
-                        string json;
-                        if (tid == types[0])
-                        {
-                            var resp = await Client.GetAsync($"universe/types/{tid}/?datasource=serenity&language=zh");
-                            if (resp.StatusCode == HttpStatusCode.NotModified)
-                            {
-                                Console.WriteLine("No data modified.");
-                                return;
-                            }
-                            await File.WriteAllTextAsync("ty.etag", resp.Headers.ETag.Tag);
-                            json = await resp.Content.ReadAsStringAsync();
-                        }
-                        else
-                        {
-                            json = await Client.GetStringAsync($"universe/types/{tid}/?datasource=serenity&language=zh");
-                        }
-                        EveMarketEntities.Type t = JsonConvert.DeserializeObject<EveMarketEntities.Type>(json);
-
-                        if (context.Types.Any(t => t.TypeId == tid))
-                        {
-                            await context.AddOrUpdateAsync(t);
-                            t.DogmaAttributes?.ForEach(e => { e.TypeId = t.TypeId; context.AddOrUpdateAsync(e).Wait(); });
-                            t.DogmaEffects?.ForEach(e => { e.TypeId = t.TypeId; context.AddOrUpdateAsync(e).Wait(); });
-                        }
-                        else
-                        {
-                            context.Add(t);
-                        }
-
-                        if (++i % 10000 == 0)
-                        {
-                            await context.SaveChangesAsync();
-                        }
-                    }
-                    await context.SaveChangesAsync();
+                    lock (queueLocker) Queue.Enqueue((groupId, CatchMarketGroupAsync));
                 }
             }
             catch (Exception e)
@@ -99,62 +185,85 @@ namespace EveMarketSpider
             }
         }
 
-        private async Task<int[]> CatchMarketGroupsAsync()
+        private async Task CatchMarketGroupAsync(int id)
         {
-            List<int> types = new List<int>();
+            MarketGroup marketGroup = await GetObjectAsync<MarketGroup>($"mg\\{id}.etag", $"markets/groups/{id}/?datasource=serenity&language=zh");
+            if (marketGroup == null) return;
+            lock (dblocker)
+            {
+                db.AddOrUpdateAsync(marketGroup).Wait();
+                db.SaveChanges();
+            }
+            if (marketGroup.Types != null && marketGroup.Types.Length > 0)
+            {
+                foreach (int tid in marketGroup.Types)
+                    lock (queueLocker) Queue.Enqueue((tid, CatchTypeAsync));
+            }
+        }
+
+        private async Task<T> GetObjectAsync<T>(string tagFile, string url)
+        {
+            var client = GetHttpClient(tagFile);
             try
             {
-                var resp = await Client.GetAsync("markets/groups/?datasource=serenity&language=zh");
+                var resp = await client.GetAsync(url);
+
                 if (resp.StatusCode == HttpStatusCode.NotModified)
                 {
-                    Console.WriteLine("No data modified.");
-                    return new int[0];
+                    return default(T);
                 }
-                var json = await resp.Content.ReadAsStringAsync();
-                await File.WriteAllTextAsync("mg.etag", resp.Headers.ETag.Tag);
-                Console.WriteLine($"market group ids: {json}");
-                int[] groupIds = JsonConvert.DeserializeObject<int[]>(json);
-                //Dictionary<int, MarketGroup> allMarketGroups = new Dictionary<int, MarketGroup>();
-                List<MarketGroup> roots = new List<MarketGroup>();
+                await SaveEtagAsync(tagFile, resp.Headers.ETag.Tag);
 
-                using (EveContext context = new EveContext())
-                {
-                    int i = 0;
-                    foreach (int groupId in groupIds)
-                    {
-                        json = await Client.GetStringAsync($"markets/groups/{groupId}/?datasource=serenity&language=zh");
-                        MarketGroup marketGroup = JsonConvert.DeserializeObject<MarketGroup>(json);
-                        await context.AddOrUpdateAsync(marketGroup);
-                        //allMarketGroups[marketGroup.MarketGroupId] = marketGroup;
-                        if (marketGroup.Types != null)
-                            types.AddRange(marketGroup.Types);
-                        if (++i % 10000 == 0)
-                            await context.SaveChangesAsync();
-                    }
-                    await context.SaveChangesAsync();
-                }
-                /*foreach (int groupId in groupIds)
-                {
-                    var marketGroup = allMarketGroups[groupId];
-                    types.AddRange(marketGroup.Types);
-                    if (marketGroup.ParentGroupId == 0)
-                    {
-                        roots.Add(marketGroup);
-                    }
-                    else
-                    {
-                        allMarketGroups[marketGroup.ParentGroupId].Children.Add(marketGroup);
-                    }
-                }
-
-                Console.WriteLine(JsonConvert.SerializeObject(roots));*/
+                return JsonConvert.DeserializeObject<T>(await resp.Content.ReadAsStringAsync());
             }
             catch (Exception e)
             {
+                Console.WriteLine(url);
                 Console.WriteLine(e);
+                throw;
             }
-            Console.WriteLine(JsonConvert.SerializeObject(types));
-            return types.ToArray();
+            finally
+            {
+                ReleaseHttpClient(client);
+            }
+        }
+
+        private async Task SaveEtagAsync(string etagName, string tag)
+        {
+            string path = $"..\\etags\\{etagName}";
+            if (!Directory.Exists(Path.GetDirectoryName(path)))
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+            await File.WriteAllTextAsync(path, tag);
+        }
+
+        private HttpClient GetHttpClient(string etagName = null)
+        {
+            semaphore.WaitOne();
+            HttpClient client;
+            try
+            {
+                lock (clients) client = clients.Dequeue();
+            }
+            catch (InvalidOperationException)
+            {
+                client = new HttpClient
+                {
+                    BaseAddress = new Uri(Domain)
+                };
+            }
+            string path = $"..\\etags\\{etagName}";
+            client.DefaultRequestHeaders.IfNoneMatch.Clear();
+            if (!string.IsNullOrEmpty(etagName) && File.Exists(path))
+            {
+                client.DefaultRequestHeaders.IfNoneMatch.Add(new EntityTagHeaderValue(File.ReadAllText(path)));
+            }
+            return client;
+        }
+
+        private void ReleaseHttpClient(HttpClient client)
+        {
+            lock (clients) clients.Enqueue(client);
+            semaphore.Release();
         }
     }
 }

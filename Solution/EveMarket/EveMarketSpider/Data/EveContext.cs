@@ -17,6 +17,14 @@ namespace EveMarketSpider.Data
 
         public DbSet<Modifier> Modifiers { get; set; }
 
+        public DbSet<Region> Regions { get; set; }
+
+        public DbSet<Constellation> Constellations { get; set; }
+
+        public DbSet<EveMarketEntities.System> Systems { get; set; }
+
+        public DbSet<Station> Stations { get; set; }
+
         protected override void OnModelCreating(ModelBuilder builder)
         {
             builder.Entity<MarketGroup>().HasKey(e => e.MarketGroupId);
@@ -28,6 +36,10 @@ namespace EveMarketSpider.Data
             builder.Entity<Attribute>().HasKey(e => e.AttributeId);
             builder.Entity<Effect>().HasKey(e => e.EffectId);
             builder.Entity<Modifier>().HasKey(e => e.Func);
+            builder.Entity<Region>().HasKey(e => e.RegionId);
+            builder.Entity<Constellation>().HasKey(e => e.ConstellationId);
+            builder.Entity<EveMarketEntities.System>().HasKey(e => e.SystemId);
+            builder.Entity<Station>().HasKey(e => e.StationId);
         }
 
         protected override void OnConfiguring(DbContextOptionsBuilder options)
@@ -44,7 +56,7 @@ namespace EveMarketSpider.Data
             }
             else
             {
-                Entry(entity).CurrentValues.SetValues(entity);
+                Entry(exists).CurrentValues.SetValues(entity);
                 return Entry(entity);
             }
         }
@@ -58,7 +70,7 @@ namespace EveMarketSpider.Data
             }
             else
             {
-                Entry(entity).CurrentValues.SetValues(entity);
+                Entry(exists).CurrentValues.SetValues(entity);
                 return Entry(entity);
             }
         }
@@ -72,7 +84,7 @@ namespace EveMarketSpider.Data
             }
             else
             {
-                Entry(entity).CurrentValues.SetValues(entity);
+                Entry(exists).CurrentValues.SetValues(entity);
                 return Entry(entity);
             }
         }
@@ -86,7 +98,63 @@ namespace EveMarketSpider.Data
             }
             else
             {
-                Entry(entity).CurrentValues.SetValues(entity);
+                Entry(exists).CurrentValues.SetValues(entity);
+                return Entry(entity);
+            }
+        }
+
+        public async Task<EntityEntry<Region>> AddOrUpdateAsync(Region entity)
+        {
+            var exists = await FindAsync<Region>(entity.RegionId);
+            if (exists == null)
+            {
+                return Add(entity);
+            }
+            else
+            {
+                Entry(exists).CurrentValues.SetValues(entity);
+                return Entry(entity);
+            }
+        }
+
+        public async Task<EntityEntry<Constellation>> AddOrUpdateAsync(Constellation entity)
+        {
+            var exists = await FindAsync<Constellation>(entity.ConstellationId);
+            if (exists == null)
+            {
+                return Add(entity);
+            }
+            else
+            {
+                Entry(exists).CurrentValues.SetValues(entity);
+                return Entry(entity);
+            }
+        }
+
+        public async Task<EntityEntry<EveMarketEntities.System>> AddOrUpdateAsync(EveMarketEntities.System entity)
+        {
+            var exists = await FindAsync<EveMarketEntities.System>(entity.SystemId);
+            if (exists == null)
+            {
+                return Add(entity);
+            }
+            else
+            {
+                Entry(exists).CurrentValues.SetValues(entity);
+                return Entry(entity);
+            }
+        }
+
+        public async Task<EntityEntry<Station>> AddOrUpdateAsync(Station entity)
+        {
+            var exists = await FindAsync<Station>(entity.StationId);
+            if (exists == null)
+            {
+                return Add(entity);
+            }
+            else
+            {
+                Entry(exists).CurrentValues.SetValues(entity);
                 return Entry(entity);
             }
         }

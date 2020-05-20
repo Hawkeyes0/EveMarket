@@ -9,5 +9,8 @@ namespace EveMarketEntities
 
         [JsonProperty("description")]
         public string Description { get; set; }
+
+        [JsonProperty("etag")]
+        public string Etag { get; set; }
     }
 }

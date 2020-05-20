@@ -8,7 +8,7 @@ namespace EveMarketSpider
         {
             Console.WriteLine("Hello World!");
             EveSpider spider = new EveSpider();
-            await spider.CatchDataAsync();
+            spider.CatchData();
         }
     }
 }
